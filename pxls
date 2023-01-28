@@ -1,0 +1,171 @@
+#!/usr/bin/perl
+
+# Copyright (c) 2023 Todd T. Fries <todd@fries.net>
+#
+# Permission to use, copy, modify, and distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ 
+use strict;
+use warnings;
+
+# Use the X11::Protocol module
+use Data::Dumper;
+use Getopt::Std;
+use X11::Protocol;
+ 
+# Create a new X11::Protocol object
+our $X = X11::Protocol->new;
+
+$X->init_extensions;
+
+# declaration
+our $opt_A; # all even no property window ids
+our $opt_a; # attributes
+our $opt_e; # list extensions only
+our $opt_r; # regex search
+our $opt_v; # verbose
+
+# defaults
+$opt_v = 0;
+
+getopts('Aaefr:v');
+
+if (defined($opt_e)) {
+	my @extensions = $X->ListExtensions;
+	foreach my $ext (sort @extensions) {
+		print " ext '${ext}'\n";
+	}
+	exit(0);
+}
+
+our $xcache = { };
+
+
+show_tree($X->root, '|- ', "|  ");
+
+sub show_tree { 
+	my ($wid, $pre0, $preN) = @_;
+
+	my ($rootid, $parent, @children) = $X->QueryTree( $X->root );
+
+	my $topmsg = "QueryTree($rootid)\n";
+	my $topseen = 0;
+	if (!@children) {
+		return;
+	}
+	
+# Print out the list of applications and their titles
+foreach my $child (@children) {
+	my $hide = 0;
+	# if regex, hide by default
+	if (defined($opt_r)) {
+		$hide = 1;
+	}
+
+	my $output = "";
+	# $child is a window id
+	$output .= sprintf "${pre0}Window %10s:\n", $child;
+	my @props = $X->ListProperties($child);
+	my $pmaxlen = 1;
+	foreach my $prop (@props) {
+		my $pname = $X->atom_name($prop);
+		if (length($pname) > $pmaxlen) {
+			$pmaxlen = length($pname);
+		}
+	}
+	my $pnotempty = 0;
+	foreach my $prop (@props) {
+		my $pstr = get_nprop($child, $prop);
+		if (defined($pstr) && length($pstr) > 0) {
+			$pnotempty++;
+			if (defined($opt_r)) {
+				if ($pstr =~ /${opt_r}/) {
+					$hide = 0;
+				}
+			}
+			$output .= sprintf "${preN}\t %${pmaxlen}s(%3d) ", $X->atom_name($prop), $prop;
+			my $str = "";
+			foreach my $s (split(/\0/,$pstr)) {
+				$str .= "<$s>, ";
+			}
+			$str =~ s/>, $/>/;
+			$output .= "$str";
+			$output .= "\n";
+		}
+	}
+	if (!defined($opt_r) && !defined($opt_A) && $pnotempty == 0) {
+		$hide = 1;
+	}
+	
+	my %attr = $X->GetWindowAttributes($child);
+	if (%attr && defined($opt_a)) {
+		my $maxlen = 1;
+		foreach my $key (keys %attr) {
+			if (length($key) > $maxlen) {
+				$maxlen = length($key);
+			}
+		}
+
+		foreach my $key (sort keys %attr) {
+			$output .= sprintf "${preN}\t%${maxlen}s: %s\n", $key, $attr{$key};
+			if (defined($opt_r)) {
+				if ($attr{$key} =~ /${opt_r}/) {
+					$hide = 0;
+				}
+			}
+		}
+	}
+	if ($hide == 0) {
+		if ($topseen == 0) {
+			print $topmsg;
+			$topseen++;
+		}
+		print $output;
+	}
+	#show_tree($child, $preN."\`--", $preN);
+}
+}
+
+sub get_prop {
+	my ($win, $name) = @_;
+
+	my @list = $X->GetProperty($win,
+		get_atom($name),
+		get_atom("STRING"),
+		0, 65535, 0);
+	return $list[0];
+}
+sub get_nprop {
+	my ($win, $atomid) = @_;
+
+	my @list = $X->GetProperty($win,
+		$atomid,
+		get_atom("STRING"),
+		0, 65535, 0);
+	return $list[0];
+}
+
+sub get_atom {
+	my ($name) = @_;
+
+	if (!defined($name)) {
+		return undef;
+	}
+	my $result = $xcache->{atom}->{$name};
+	if (!defined($result)) {
+		$result = $X->atom($name);
+		$xcache->{atom}->{$name} = $result;
+	}
+
+	return $result;
+}
+
