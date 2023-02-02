@@ -73,7 +73,7 @@ foreach my $child (@children) {
 
 	my $output = "";
 	# $child is a window id
-	$output .= sprintf "${pre0}Window %10s:\n", $child;
+	$output .= sprintf "${pre0}Window 0x%10x:\n", $child;
 	my @props = $X->ListProperties($child);
 	my $pmaxlen = 1;
 	foreach my $prop (@props) {
@@ -92,7 +92,7 @@ foreach my $child (@children) {
 					$hide = 0;
 				}
 			}
-			$output .= sprintf "${preN}\t %${pmaxlen}s(%3d) ", $X->atom_name($prop), $prop;
+			$output .= sprintf "${preN}\t %-${pmaxlen}s(%3d) ", $X->atom_name($prop), $prop;
 			my $str = "";
 			foreach my $s (split(/\0/,$pstr)) {
 				$str .= "<$s>, ";
