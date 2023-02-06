@@ -73,7 +73,7 @@ foreach my $child (@children) {
 
 	my $output = "";
 	# $child is a window id
-	$output .= sprintf "${pre0}Window 0x%10x:\n", $child;
+	$output .= sprintf "${pre0}Window 0x%08x:\n", $child;
 	my @props = $X->ListProperties($child);
 	my $pmaxlen = 1;
 	foreach my $prop (@props) {
@@ -88,7 +88,7 @@ foreach my $child (@children) {
 		if (defined($pstr) && length($pstr) > 0) {
 			$pnotempty++;
 			if (defined($opt_r)) {
-				if ($pstr =~ /${opt_r}/) {
+				if ($pstr =~ /${opt_r}/i) {
 					$hide = 0;
 				}
 			}
@@ -118,7 +118,7 @@ foreach my $child (@children) {
 		foreach my $key (sort keys %attr) {
 			$output .= sprintf "${preN}\t%${maxlen}s: %s\n", $key, $attr{$key};
 			if (defined($opt_r)) {
-				if ($attr{$key} =~ /${opt_r}/) {
+				if ($attr{$key} =~ /${opt_r}/i) {
 					$hide = 0;
 				}
 			}
