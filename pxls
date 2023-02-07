@@ -104,7 +104,7 @@ foreach my $child (@children) {
 			$output .= "$str";
 			$output .= "\n";
 		} else {
-			$output .= sprintf "\t%s - empty\n", $X->atom_name($prop);
+			$output .= sprintf "${preN}\t %-${pmaxlen}s(%3d) empty\n", $X->atom_name($prop), $prop;
 		}
 	}
 	if (!defined($opt_r) && !defined($opt_A) && $pnotempty == 0) {
@@ -152,10 +152,21 @@ sub get_prop {
 sub get_nprop {
 	my ($win, $atomid) = @_;
 
+	my $atype = "STRING";
+	if ($atomid == 378) {
+		$atype = "CARDINAL";
+	}
+
 	my @list = $X->GetProperty($win,
 		$atomid,
-		$X->atom(STRING),
+		$X->atom($atype),
 		0, 65535, 0);
+	if ($atomid == 378) {
+		my $raw = $list[0];
+		my ($low, $high, $a, $b) = unpack('C C C C', $raw);
+		my $pid = $low + ($high << 8) + ($a << 16) + ($b << 24);
+		$list[0] = sprintf "%6d", $pid;
+	}
 	return $list[0];
 }
 
