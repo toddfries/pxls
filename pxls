@@ -18,10 +18,9 @@ use strict;
 use warnings;
 
 # Use the X11::Protocol module
-use Data::Dumper;
 use Getopt::Std;
 use X11::Protocol;
- 
+
 # Create a new X11::Protocol object
 our $X = X11::Protocol->new;
 
@@ -70,11 +69,15 @@ foreach my $child (@children) {
 	if (defined($opt_r)) {
 		$hide = 1;
 	}
+	if (defined($opt_r) && $wid =~ /${opt_r}/i) {
+		$hide = 0;
+	}
 
 	my $output = "";
 	# $child is a window id
 	$output .= sprintf "${pre0}Window 0x%08x:\n", $child;
 	my @props = $X->ListProperties($child);
+
 	my $pmaxlen = 1;
 	foreach my $prop (@props) {
 		my $pname = $X->atom_name($prop);
@@ -100,6 +103,8 @@ foreach my $child (@children) {
 			$str =~ s/>, $/>/;
 			$output .= "$str";
 			$output .= "\n";
+		} else {
+			$output .= sprintf "\t%s - empty\n", $X->atom_name($prop);
 		}
 	}
 	if (!defined($opt_r) && !defined($opt_A) && $pnotempty == 0) {
@@ -139,8 +144,8 @@ sub get_prop {
 	my ($win, $name) = @_;
 
 	my @list = $X->GetProperty($win,
-		get_atom($name),
-		get_atom("STRING"),
+		$X->atom($name),
+		$X->atom("STRING"),
 		0, 65535, 0);
 	return $list[0];
 }
@@ -149,23 +154,8 @@ sub get_nprop {
 
 	my @list = $X->GetProperty($win,
 		$atomid,
-		get_atom("STRING"),
+		$X->atom(STRING),
 		0, 65535, 0);
 	return $list[0];
-}
-
-sub get_atom {
-	my ($name) = @_;
-
-	if (!defined($name)) {
-		return undef;
-	}
-	my $result = $xcache->{atom}->{$name};
-	if (!defined($result)) {
-		$result = $X->atom($name);
-		$xcache->{atom}->{$name} = $result;
-	}
-
-	return $result;
 }
 
