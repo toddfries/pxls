@@ -86,7 +86,8 @@ foreach my $child (@children) {
 		}
 	}
 	my $pnotempty = 0;
-	foreach my $prop (@props) {
+	foreach my $prop (sort { $X->atom_name($a) cmp $X->atom_name($b) }
+	    @props) {
 		my $pstr = get_nprop($child, $prop);
 		if (defined($pstr) && length($pstr) > 0) {
 			$pnotempty++;
