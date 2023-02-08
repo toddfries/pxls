@@ -154,20 +154,100 @@ sub get_nprop {
 	my ($win, $atomid) = @_;
 
 	my $atype = "STRING";
-	if ($atomid == 378) {
-		$atype = "CARDINAL";
-	}
+	my $atypeno = $X->atom($atype);
 
-	my @list = $X->GetProperty($win,
+	# first request STRING type, it tells us the real type in $rtype
+	my ($raw, $rtype, $format, $d) = $X->GetProperty($win,
 		$atomid,
 		$X->atom($atype),
 		0, 65535, 0);
-	if ($atomid == 378) {
-		my $raw = $list[0];
-		my ($low, $high, $a, $b) = unpack('C C C C', $raw);
-		my $pid = $low + ($high << 8) + ($a << 16) + ($b << 24);
-		$list[0] = sprintf "%6d", $pid;
+	# If not the same, requst again with proper type
+	if ($rtype != $atypeno) {
+		($raw, $rtype, $format, $d) = $X->GetProperty($win,
+			$atomid,
+			$rtype,
+			0, 65535, 0);
 	}
-	return $list[0];
+
+	# now we 'handle' various atom types, defaulting to hex if unknown
+	if ($rtype == $X->atom("STRING")) {
+		return $raw;
+	} elsif ($rtype == $X->atom("UTF8_STRING")) {
+		return $raw;
+	} elsif ($rtype == $X->atom("CARDINAL")) {
+		return decode_dec($raw, $format);
+
+	} elsif ($rtype == $X->atom("WM_SIZE_HINTS")) {
+		my ($flags, $pad1, $pad2, $pad3, $min_width, $min_height, $max_width, $max_height, $width_inc, $height_inc, $min_aspect_x, $min_aspect_y, $max_aspect_x, $max_aspect_y, $base_width, $base_height, $win_gravity) = unpack('LLLLssssssssssss', $raw);
+		if (!defined($win_gravity)) {
+			$win_gravity = "";
+		}
+		return sprintf "flags=0x%x, min/max width/height=%d/%d/%d/%d,".
+			" width/height inc=%d/%d,".
+			" min/max aspect x/y=%d/%d/%d/%d,".
+			" base width/height=%d/%d,".
+			" win_gravity=%s",
+			$flags,
+			$min_width, $max_width, $min_height, $max_height,
+			$width_inc, $height_inc,
+			$min_aspect_x, $max_aspect_x, $min_aspect_y, $max_aspect_y,
+			$base_width, $base_height,
+			$win_gravity;
+	} elsif ($rtype == $X->atom("ATOM")) {
+		return decode_atoms($raw, $format);
+	} else {
+		foreach my $t (("_MOTIF_WM_HINTS",
+			"WM_STATE",
+			"WM_HINTS",
+			"WM_CLIENT_LEADER",
+			"WINDOW")) {
+			if ($rtype == $X->atom($t)) {
+				return decode_hex($raw, $format);
+			}
+		}
+	}
+	# show some helpful hints if verbose and not known to populate above
+	if($opt_v>0) {
+	    printf "%s[%s] len/atype(no)/format/d=%s/%s(%s)/%s/%s\n",
+		$X->atom_name($atomid), $atomid,
+		length($raw), $X->atom_name($rtype), $rtype,
+		$format, $d;
+	}
+	return decode_hex($raw, $format);
 }
 
+sub decode_hex {
+		my ($raw, $format) = @_;
+		my $atom_len = $format/8;
+		my $index = 0;
+		my $retstr = "";
+		while ($index < length($raw)) {
+			my ($low, $high, $a, $b) = unpack("x${index}C C C C", $raw);
+			my $aid = $low + ($high << 8) + ($a << 16) + ($b << 24);
+			$retstr .= sprintf "0x%x ", $aid;
+			$index += $atom_len;
+		}
+		$retstr =~ s/\s+$//;
+		return $retstr;
+}
+sub decode_atoms {
+		my ($raw, $format) = @_;
+		my $atom_len = $format/8;
+		my $index = 0;
+		my $retstr = "";
+		while ($index < length($raw)) {
+			my ($low, $high, $a, $b) = unpack("x${index}C C C C", $raw);
+			my $aid = $low + ($high << 8) + ($a << 16) + ($b << 24);
+			$retstr .= sprintf "%s ", $X->atom_name($aid);
+			$index += $atom_len;
+		}
+		$retstr =~ s/\s+$//;
+		return $retstr;
+}
+
+sub decode_dec {
+	my ($raw, $format) = @_;
+	my ($low, $high, $a, $b) = unpack('C C C C', $raw);
+	my $pid = $low + ($high << 8) + ($a << 16) + ($b << 24);
+	return sprintf "%6d", $pid;
+}
