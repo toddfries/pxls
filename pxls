@@ -153,31 +153,34 @@ sub get_prop {
 sub get_nprop {
 	my ($win, $atomid) = @_;
 
-	my $atype = "STRING";
-	my $atypeno = $X->atom($atype);
+	my $astr = { };
 
-	# first request STRING type, it tells us the real type in $rtype
-	my ($raw, $rtype, $format, $d) = $X->GetProperty($win,
+	my $aname = "STRING";
+	my $aid = $X->atom($aname);
+
+	# first request STRING type, it tells us the real type in $atype
+	my ($raw, $atype, $format, $d) = $X->GetProperty($win,
 		$atomid,
-		$X->atom($atype),
+		$X->atom($aname),
 		0, 65535, 0);
 	# If not the same, requst again with proper type
-	if ($rtype != $atypeno) {
-		($raw, $rtype, $format, $d) = $X->GetProperty($win,
+	if ($atype != $aid) {
+		($raw, $atype, $format, $d) = $X->GetProperty($win,
 			$atomid,
-			$rtype,
+			$atype,
 			0, 65535, 0);
 	}
+	$astr->{atype} = $atype;
 
 	# now we 'handle' various atom types, defaulting to hex if unknown
-	if ($rtype == $X->atom("STRING")) {
+	if ($atype == $X->atom("STRING")) {
 		return $raw;
-	} elsif ($rtype == $X->atom("UTF8_STRING")) {
+	} elsif ($atype == $X->atom("UTF8_STRING")) {
 		return $raw;
-	} elsif ($rtype == $X->atom("CARDINAL")) {
+	} elsif ($atype == $X->atom("CARDINAL")) {
 		return decode_dec($raw, $format);
 
-	} elsif ($rtype == $X->atom("WM_SIZE_HINTS")) {
+	} elsif ($atype == $X->atom("WM_SIZE_HINTS")) {
 		my ($flags, $pad1, $pad2, $pad3, $min_width, $min_height, $max_width, $max_height, $width_inc, $height_inc, $min_aspect_x, $min_aspect_y, $max_aspect_x, $max_aspect_y, $base_width, $base_height, $win_gravity) = unpack('LLLLssssssssssss', $raw);
 		if (!defined($win_gravity)) {
 			$win_gravity = "";
@@ -193,7 +196,7 @@ sub get_nprop {
 			$min_aspect_x, $max_aspect_x, $min_aspect_y, $max_aspect_y,
 			$base_width, $base_height,
 			$win_gravity;
-	} elsif ($rtype == $X->atom("ATOM")) {
+	} elsif ($atype == $X->atom("ATOM")) {
 		return decode_atoms($raw, $format);
 	} else {
 		foreach my $t (("_MOTIF_WM_HINTS",
@@ -201,16 +204,16 @@ sub get_nprop {
 			"WM_HINTS",
 			"WM_CLIENT_LEADER",
 			"WINDOW")) {
-			if ($rtype == $X->atom($t)) {
+			if ($atype == $X->atom($t)) {
 				return decode_hex($raw, $format);
 			}
 		}
 	}
 	# show some helpful hints if verbose and not known to populate above
 	if($opt_v>0) {
-	    printf "%s[%s] len/atype(no)/format/d=%s/%s(%s)/%s/%s\n",
+	    printf "%s[%s] len/aname(no)/format/d=%s/%s(%s)/%s/%s\n",
 		$X->atom_name($atomid), $atomid,
-		length($raw), $X->atom_name($rtype), $rtype,
+		length($raw), $X->atom_name($atype), $atype,
 		$format, $d;
 	}
 	return decode_hex($raw, $format);
