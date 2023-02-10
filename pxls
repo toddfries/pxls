@@ -46,8 +46,8 @@ if (defined($opt_e)) {
 	exit(0);
 }
 
-our $xcache = { };
-
+# object 'cache'
+our $o = { };
 
 show_tree($X->root, '|- ', "|  ");
 
@@ -63,32 +63,50 @@ sub show_tree {
 	}
 	
 # Print out the list of applications and their titles
+my $pmaxlen = 1;
+my $atmaxlen = 1;
 foreach my $child (@children) {
+
+	my @props = $X->ListProperties($child);
+
+	foreach my $prop (@props) {
+		my $astr = get_nprop($child, $prop);
+		my $atname = $X->atom_name($astr->{atype});
+		my $pname = $X->atom_name($prop);
+		if (length($atname) > $atmaxlen) {
+			$atmaxlen = length($atname);
+		}
+		if (length($pname) > $pmaxlen) {
+			$pmaxlen = length($pname);
+		}
+		$o->{$child}->{$prop}->{pname}  = $pname;
+		$o->{$child}->{$prop}->{atype}  = $astr->{atype};
+		$o->{$child}->{$prop}->{atname} = $atname;
+		$o->{$child}->{$prop}->{data}   = $astr->{data};
+	}
+}
+
+foreach my $child (keys %{$o}) {
 	my $hide = 0;
 	# if regex, hide by default
 	if (defined($opt_r)) {
 		$hide = 1;
 	}
-	if (defined($opt_r) && $wid =~ /${opt_r}/i) {
+	if (defined($opt_r) && $child =~ /${opt_r}/i) {
 		$hide = 0;
 	}
 
-	my $output = "";
 	# $child is a window id
+	my $output = "";
 	$output .= sprintf "${pre0}Window 0x%08x:\n", $child;
-	my @props = $X->ListProperties($child);
 
-	my $pmaxlen = 1;
-	foreach my $prop (@props) {
-		my $pname = $X->atom_name($prop);
-		if (length($pname) > $pmaxlen) {
-			$pmaxlen = length($pname);
-		}
-	}
 	my $pnotempty = 0;
 	foreach my $prop (sort { $X->atom_name($a) cmp $X->atom_name($b) }
-	    @props) {
-		my $pstr = get_nprop($child, $prop);
+	    keys %{ $o->{$child} }) {
+		my $pname = $o->{$child}->{$prop}->{pname};
+		my $atype = $o->{$child}->{$prop}->{atype};
+		my $atname = $o->{$child}->{$prop}->{atname};
+		my $pstr = $o->{$child}->{$prop}->{data};
 		if (defined($pstr) && length($pstr) > 0) {
 			$pnotempty++;
 			if (defined($opt_r)) {
@@ -96,7 +114,8 @@ foreach my $child (@children) {
 					$hide = 0;
 				}
 			}
-			$output .= sprintf "${preN}\t %-${pmaxlen}s(%3d) ", $X->atom_name($prop), $prop;
+			$output .= sprintf("${preN}\t (%-${atmaxlen}s)%-${pmaxlen}s ",
+				$atname, $pname);
 			my $str = "";
 			foreach my $s (split(/\0/,$pstr)) {
 				$str .= "<$s>, ";
@@ -105,7 +124,7 @@ foreach my $child (@children) {
 			$output .= "$str";
 			$output .= "\n";
 		} else {
-			$output .= sprintf "${preN}\t %-${pmaxlen}s(%3d) empty\n", $X->atom_name($prop), $prop;
+			$output .= sprintf "${preN}\t %-${pmaxlen}s empty\n", $pname;
 		}
 	}
 	if (!defined($opt_r) && !defined($opt_A) && $pnotempty == 0) {
@@ -128,6 +147,11 @@ foreach my $child (@children) {
 					$hide = 0;
 				}
 			}
+		}
+	}
+	if (defined($opt_r) && $hide == 1) {
+		if ($output =~ /${opt_r}/i) {
+			$hide = 0;
 		}
 	}
 	if ($hide == 0) {
@@ -174,18 +198,20 @@ sub get_nprop {
 
 	# now we 'handle' various atom types, defaulting to hex if unknown
 	if ($atype == $X->atom("STRING")) {
-		return $raw;
+		$astr->{data} = $raw;
+		return $astr;
 	} elsif ($atype == $X->atom("UTF8_STRING")) {
-		return $raw;
+		$astr->{data} = $raw;
+		return $astr;
 	} elsif ($atype == $X->atom("CARDINAL")) {
-		return decode_dec($raw, $format);
-
+		$astr->{data} = decode_dec($raw, $format);
+		return $astr;
 	} elsif ($atype == $X->atom("WM_SIZE_HINTS")) {
 		my ($flags, $pad1, $pad2, $pad3, $min_width, $min_height, $max_width, $max_height, $width_inc, $height_inc, $min_aspect_x, $min_aspect_y, $max_aspect_x, $max_aspect_y, $base_width, $base_height, $win_gravity) = unpack('LLLLssssssssssss', $raw);
 		if (!defined($win_gravity)) {
 			$win_gravity = "";
 		}
-		return sprintf "flags=0x%x, min/max width/height=%d/%d/%d/%d,".
+		$astr->{data} = sprintf "flags=0x%x, min/max width/height=%d/%d/%d/%d,".
 			" width/height inc=%d/%d,".
 			" min/max aspect x/y=%d/%d/%d/%d,".
 			" base width/height=%d/%d,".
@@ -196,8 +222,10 @@ sub get_nprop {
 			$min_aspect_x, $max_aspect_x, $min_aspect_y, $max_aspect_y,
 			$base_width, $base_height,
 			$win_gravity;
+		return $astr;
 	} elsif ($atype == $X->atom("ATOM")) {
-		return decode_atoms($raw, $format);
+		$astr->{data} = decode_atoms($raw, $format);
+		return $astr;
 	} else {
 		foreach my $t (("_MOTIF_WM_HINTS",
 			"WM_STATE",
@@ -205,7 +233,8 @@ sub get_nprop {
 			"WM_CLIENT_LEADER",
 			"WINDOW")) {
 			if ($atype == $X->atom($t)) {
-				return decode_hex($raw, $format);
+				$astr->{data} = decode_hex($raw, $format);
+				return $astr;
 			}
 		}
 	}
@@ -216,7 +245,8 @@ sub get_nprop {
 		length($raw), $X->atom_name($atype), $atype,
 		$format, $d;
 	}
-	return decode_hex($raw, $format);
+	$astr->{data} = decode_hex($raw, $format);
+	return $astr;
 }
 
 sub decode_hex {
